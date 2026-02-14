@@ -1,4 +1,4 @@
-# RustyScalpel
+# smc — Search My Claude
 
 Surgical search through Claude Code JSONL conversation logs.
 
@@ -9,6 +9,9 @@ Built in Rust for speed — searches 2.8GB+ of conversation history in under a s
 ```bash
 # From the project directory
 cargo install --path .
+
+# Or use the Makefile
+make install
 
 # Verify
 smc --version
@@ -26,22 +29,7 @@ Overview of all your conversation data — total sessions, total size, and top p
 smc stats
 ```
 
-```
-RustyScalpel Stats
-══════════════════════════════════════════════════
-  Total sessions:  207
-  Total size:      2.80GB
-  Projects:        57
-
-Top Projects by Size
-──────────────────────────────────────────────────
-  myapp                           48 sessions   719.4MB
-  backend-api                           5 sessions   440.4MB
-  mvServer                         40 sessions   409.6MB
-  ...
-```
-
-### `smc sessions`
+### `smc sessions` (alias: `smc ls`)
 
 List sessions sorted by most recent, with the first user message as a preview.
 
@@ -54,23 +42,42 @@ smc sessions -n 50
 
 # Filter by project name
 smc sessions -p myapp
+
+# Filter by date range
+smc sessions --after 2026-02-01
+smc sessions --before 2026-02-10
+smc sessions --after 2026-02-01 --before 2026-02-14
 ```
 
-### `smc search <query> [query2] [query3] ...`
+### `smc projects` (alias: `smc p`)
 
-Full-text search across all conversations. Searches user messages, assistant responses, tool calls, tool results, and thinking blocks. Multiple queries are OR'd together. All searches are case-insensitive and substring-based (e.g., `"dep"` matches "deploy").
+List all projects with session counts, total sizes, and date ranges.
+
+```bash
+smc projects
+```
+
+```
+57 projects
+
+  myapp                           48 sessions   720.7MB  2026-01-28 → 2026-02-14
+  mvServer                         40 sessions   410.5MB  2026-01-28 → 2026-02-14
+  ...
+```
+
+### `smc search <query> [query2] ...` (alias: `smc s`)
+
+Full-text search across all conversations. Searches user messages, assistant responses, tool calls, tool results, and thinking blocks. Multiple queries are OR'd together. All searches are case-insensitive and substring-based.
 
 ```bash
 # Basic search
 smc search "swiftui"
 
-# Multiple terms (OR) — finds messages containing any of them
+# Multiple terms (OR)
 smc search "bug" "error" "crash"
 
-# Search only user messages
+# Filter by role
 smc search "bug" --role user
-
-# Search only assistant messages
 smc search "error" --role assistant
 
 # Filter by project
@@ -79,11 +86,9 @@ smc search "animation" -p myapp
 # Filter by date range
 smc search "refactor" --after 2026-02-01
 smc search "deploy" --before 2026-01-15
-smc search "fix" --after 2026-02-01 --before 2026-02-14
 
-# Filter by tool name (find conversations where a specific tool was used)
+# Filter by tool name
 smc search "swift" --tool Bash
-smc search "model" --tool Write
 
 # Filter by git branch
 smc search "merge" --branch main
@@ -94,29 +99,31 @@ smc search "func\s+\w+View" -e
 # Limit results (default: 50)
 smc search "todo" -n 10
 
-# Combine filters
-smc search "crash" --role user --after 2026-02-01 -p myapp -n 20
+# Count mode — show match counts per project
+smc search "swiftui" --count
+
+# JSON output — one JSON object per line (pipeable to jq)
+smc search "deploy" --json -n 5
 
 # Print markdown to stdout (pipeable)
-smc search "swiftui" --role user -o
+smc search "swiftui" -o
 
 # Save results to a markdown file
-smc search "auth" -p mvServer --after 2026-02-01 --md auth_research.md
+smc search "auth" --md auth_research.md
 
-# Both: pipe markdown to stdout AND save to file
+# Both: pipe to stdout AND save to file
 smc search "crash" -o --md crash_report.md
 ```
 
 **Output flags:**
 - `-o` prints clean markdown to stdout (suppresses colored output, great for piping)
-- `--md <file>` saves results to a markdown file (terminal output stays normal)
-- `-o --md <file>` does both
-
-Each markdown result includes the query, active filters, session ID, timestamp, role, and a content preview.
+- `--md <file>` saves results to a markdown file
+- `--count` / `-c` shows aggregate match counts per project instead of results
+- `--json` outputs one JSON object per line for piping to `jq`
 
 ### `smc show <session-id>`
 
-Pretty-print an entire conversation with colored roles, timestamps, tool calls, and thinking blocks.
+Pretty-print a conversation with colored roles, timestamps, tool calls, and thinking blocks.
 
 ```bash
 # Full session ID
@@ -125,27 +132,62 @@ smc show 394afc57-5feb-4d44-af8c-23b273bd4c56
 # Prefix match (just enough to be unique)
 smc show 394afc
 
-# Include thinking blocks (shown by default but truncated)
+# Include thinking blocks
 smc show 394afc --thinking
+
+# Show specific message range
+smc show 394afc --from 5 --to 15
 ```
 
-### `smc tools <session-id>`
+### `smc tools <session-id>` (alias: `smc t`)
 
-List all tool calls made during a session — useful for understanding what actions were taken.
+List all tool calls made during a session.
 
 ```bash
 smc tools 394afc
 ```
 
+### `smc export <session-id>` (alias: `smc e`)
+
+Export a session as clean markdown with collapsible thinking blocks, formatted tool calls, and result previews.
+
+```bash
+# Export to file (default: <session-id>.md)
+smc export 394afc
+
+# Export to a specific file
+smc export 394afc --md my_session.md
+
+# Export to stdout (pipeable)
+smc export 394afc -o
 ```
-Tool calls in session: 394afc57-... (Geralds/Game)
 
-  2026-01-25T08:37:20 assistant Glob
-  2026-01-25T08:37:20 assistant Glob
-  2026-01-25T08:37:25 assistant Bash
-  ...
+### `smc context <session-id> <line>` (alias: `smc ctx`)
 
-12 tool-calling messages
+Show messages around a specific line number in a session. Useful when search gives you a line number and you want to see the surrounding conversation.
+
+```bash
+# Show 3 messages before and after line 50
+smc context 394afc 50
+
+# Adjust context window
+smc context 394afc 50 -C 5
+```
+
+### `smc recent` (alias: `smc r`)
+
+Show the most recent messages across all sessions, sorted by timestamp.
+
+```bash
+# Show 10 most recent messages (default)
+smc recent
+
+# Show more
+smc recent -n 25
+
+# Filter by role
+smc recent --role user
+smc recent --role assistant
 ```
 
 ## Global Options
@@ -154,8 +196,6 @@ Tool calls in session: 394afc57-... (Geralds/Game)
 --path <PATH>    Override the Claude projects directory
                  Default: ~/.claude/projects
 ```
-
-Use `--path` if your logs are in a non-standard location:
 
 ```bash
 smc stats --path /custom/path/to/projects
@@ -175,7 +215,7 @@ Each line in a JSONL file is a record with a `type` field:
 | `file-history-snapshot` | File state snapshots |
 | `progress` | Progress indicators |
 
-RustyScalpel uses [Rayon](https://github.com/rayon-rs/rayon) for parallel file processing — all CPU cores work simultaneously to scan files, which is why it can search gigabytes of data in under a second.
+smc uses [Rayon](https://github.com/rayon-rs/rayon) for parallel file processing — all CPU cores work simultaneously to scan files, which is why it can search gigabytes of data in under a second.
 
 ## Performance
 
@@ -184,9 +224,18 @@ Benchmarked on an Apple Silicon Mac with 207 sessions / 2.8GB of logs:
 | Operation | Time |
 |-----------|------|
 | `stats` | instant |
-| `sessions` | ~2s (reads first few lines of each file) |
+| `sessions` | ~2s |
 | `search` (full scan) | ~0.5s |
-| `show` (single session) | instant to ~1s depending on file size |
+| `show` (single session) | instant to ~1s |
+
+## Version Management
+
+```bash
+make patch    # 0.3.0 → 0.3.1
+make minor    # 0.3.0 → 0.4.0
+make major    # 0.3.0 → 1.0.0
+make current  # Show current version
+```
 
 ## Build from Source
 
@@ -194,12 +243,12 @@ Requires Rust 1.70+.
 
 ```bash
 git clone <repo>
-cd jsonxplorer
+cd smc_cli
 
-# Debug build (faster compile, slower runtime)
+# Debug build
 cargo build
 
-# Release build (slower compile, faster runtime)
+# Release build
 cargo build --release
 
 # Install globally
