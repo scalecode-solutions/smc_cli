@@ -3,6 +3,11 @@ name = "smc_cli"
 version = "0.3.3"
 edition = "2021"
 description = "Surgical search through Claude Code JSONL conversation logs"
+license = "MIT"
+repository = "https://github.com/scalecode-solutions/smc_cli"
+homepage = "https://github.com/scalecode-solutions/smc_cli"
+keywords = ["claude", "search", "jsonl", "cli", "logs"]
+categories = ["command-line-utilities"]
 
 [[bin]]
 name = "smc"
