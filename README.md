@@ -11,6 +11,10 @@ Search 2.8GB+ of conversation history in under a second.
 ## Quick Start
 
 ```bash
+# Install from crates.io
+cargo install smc-cli-cc
+
+# Or build from source
 git clone https://github.com/scalecode-solutions/smc_cli.git
 cd smc_cli
 cargo install --path .
