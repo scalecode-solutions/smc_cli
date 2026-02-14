@@ -25,7 +25,7 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     /// Search across all conversations
-    #[command(alias = "s")]
+    #[command(visible_alias = "s")]
     Search {
         /// Search queries (multiple terms are OR'd together)
         query: Vec<String>,
@@ -80,7 +80,7 @@ enum Commands {
     },
 
     /// List all sessions
-    #[command(alias = "ls")]
+    #[command(visible_alias = "ls")]
     Sessions {
         /// Maximum sessions to show
         #[arg(long, short = 'n', default_value = "20")]
@@ -118,7 +118,7 @@ enum Commands {
     },
 
     /// Show tool calls in a session
-    #[command(alias = "t")]
+    #[command(visible_alias = "t")]
     Tools {
         /// Session ID (or prefix)
         session: String,
@@ -128,7 +128,7 @@ enum Commands {
     Stats,
 
     /// Export a session as markdown
-    #[command(alias = "e")]
+    #[command(visible_alias = "e")]
     Export {
         /// Session ID (or prefix)
         session: String,
@@ -143,7 +143,7 @@ enum Commands {
     },
 
     /// Show messages around a specific line in a session
-    #[command(alias = "ctx")]
+    #[command(visible_alias = "ctx")]
     Context {
         /// Session ID (or prefix)
         session: String,
@@ -157,11 +157,23 @@ enum Commands {
     },
 
     /// List projects with aggregate stats
-    #[command(alias = "p")]
+    #[command(visible_alias = "p")]
     Projects,
 
+    /// Frequency analysis across all conversations
+    #[command(visible_alias = "f")]
+    Freq {
+        /// What to count: chars, words, tools, roles
+        #[arg(default_value = "chars")]
+        mode: String,
+
+        /// Max items to show (for words mode)
+        #[arg(long, short = 'n', default_value = "30")]
+        limit: usize,
+    },
+
     /// Show most recent messages across all sessions
-    #[command(alias = "r")]
+    #[command(visible_alias = "r")]
     Recent {
         /// Number of recent messages to show
         #[arg(long, short = 'n', default_value = "10")]
@@ -274,6 +286,17 @@ fn main() -> Result<()> {
         Commands::Projects => {
             let files = cfg.discover_jsonl_files()?;
             print_projects(&files)?;
+        }
+
+        Commands::Freq { mode, limit } => {
+            let files = cfg.discover_jsonl_files()?;
+            match mode.as_str() {
+                "chars" | "c" => print_freq_chars(&files)?,
+                "words" | "w" => print_freq_words(&files, limit)?,
+                "tools" | "t" => print_freq_tools(&files, limit)?,
+                "roles" | "r" => print_freq_roles(&files)?,
+                _ => anyhow::bail!("Unknown freq mode '{}'. Use: chars, words, tools, roles", mode),
+            }
         }
 
         Commands::Recent { limit, role } => {
@@ -441,6 +464,268 @@ fn print_projects(files: &[config::SessionFile]) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn print_freq_chars(files: &[config::SessionFile]) -> Result<()> {
+    use colored::*;
+    use rayon::prelude::*;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    let counts: Vec<AtomicU64> = (0..26).map(|_| AtomicU64::new(0)).collect();
+
+    let pb = indicatif::ProgressBar::new(files.len() as u64);
+    pb.set_style(
+        indicatif::ProgressStyle::default_bar()
+            .template("{spinner:.green} [{bar:40.cyan/blue}] {pos}/{len} files")
+            .unwrap()
+            .progress_chars("█▓░"),
+    );
+
+    files.par_iter().for_each(|file| {
+        if let Ok(data) = std::fs::read(&file.path) {
+            for &b in &data {
+                let idx = match b {
+                    b'a'..=b'z' => (b - b'a') as usize,
+                    b'A'..=b'Z' => (b - b'A') as usize,
+                    _ => continue,
+                };
+                counts[idx].fetch_add(1, Ordering::Relaxed);
+            }
+        }
+        pb.inc(1);
+    });
+
+    pb.finish_and_clear();
+
+    let totals: Vec<u64> = counts.iter().map(|c| c.load(Ordering::Relaxed)).collect();
+    let max_count = *totals.iter().max().unwrap_or(&1);
+    let grand_total: u64 = totals.iter().sum();
+
+    println!("{}", "Character Frequency (a-z, case-insensitive)".bold().cyan());
+    println!("{}", "═".repeat(60));
+
+    for (i, count) in totals.iter().enumerate() {
+        let letter = (b'a' + i as u8) as char;
+        let bar_len = (*count as f64 / max_count as f64 * 40.0) as usize;
+        let bar = "█".repeat(bar_len);
+        let pct = *count as f64 / grand_total as f64 * 100.0;
+        println!(
+            "  {}  {:>12}  ({:>5.2}%)  {}",
+            letter.to_string().bold(),
+            format_count(*count),
+            pct,
+            bar.cyan()
+        );
+    }
+
+    println!("{}", "─".repeat(60));
+    println!(
+        "  Total: {}  across {} files ({})",
+        format_count(grand_total).bold(),
+        files.len(),
+        format_bytes(files.iter().map(|f| f.size_bytes).sum())
+    );
+
+    Ok(())
+}
+
+fn print_freq_words(files: &[config::SessionFile], limit: usize) -> Result<()> {
+    use colored::*;
+    use rayon::prelude::*;
+    use std::collections::HashMap;
+    use std::sync::Mutex;
+
+    let word_counts: Mutex<HashMap<String, u64>> = Mutex::new(HashMap::new());
+
+    let pb = indicatif::ProgressBar::new(files.len() as u64);
+    pb.set_style(
+        indicatif::ProgressStyle::default_bar()
+            .template("{spinner:.green} [{bar:40.cyan/blue}] {pos}/{len} files")
+            .unwrap()
+            .progress_chars("█▓░"),
+    );
+
+    files.par_iter().for_each(|file| {
+        let mut local: HashMap<String, u64> = HashMap::new();
+        if let Ok(f) = std::fs::File::open(&file.path) {
+            use std::io::BufRead;
+            let reader = std::io::BufReader::with_capacity(256 * 1024, f);
+            for line in reader.lines() {
+                let Ok(line) = line else { continue };
+                let Ok(record) = serde_json::from_str::<models::Record>(&line) else { continue };
+                let Some(msg) = record.as_message_record() else { continue };
+                let text = msg.text_content();
+                for word in text.split(|c: char| !c.is_alphanumeric()) {
+                    if word.len() >= 3 {
+                        *local.entry(word.to_lowercase()).or_default() += 1;
+                    }
+                }
+            }
+        }
+        let mut global = word_counts.lock().unwrap();
+        for (word, count) in local {
+            *global.entry(word).or_default() += count;
+        }
+        pb.inc(1);
+    });
+
+    pb.finish_and_clear();
+
+    let counts = word_counts.into_inner().unwrap();
+    let mut sorted: Vec<_> = counts.into_iter().collect();
+    sorted.sort_by(|a, b| b.1.cmp(&a.1));
+
+    let max_count = sorted.first().map(|(_, c)| *c).unwrap_or(1);
+
+    println!("{}", "Word Frequency (top words, 3+ chars)".bold().cyan());
+    println!("{}", "═".repeat(60));
+
+    for (word, count) in sorted.iter().take(limit) {
+        let bar_len = (*count as f64 / max_count as f64 * 30.0) as usize;
+        let bar = "█".repeat(bar_len);
+        println!("  {:20} {:>12}  {}", word.bold(), format_count(*count), bar.cyan());
+    }
+
+    let grand_total: u64 = sorted.iter().map(|(_, c)| c).sum();
+    println!("{}", "─".repeat(60));
+    println!("  {} unique words, {} total occurrences", format_count(sorted.len() as u64), format_count(grand_total));
+
+    Ok(())
+}
+
+fn print_freq_tools(files: &[config::SessionFile], limit: usize) -> Result<()> {
+    use colored::*;
+    use rayon::prelude::*;
+    use std::collections::HashMap;
+    use std::sync::Mutex;
+
+    let tool_counts: Mutex<HashMap<String, u64>> = Mutex::new(HashMap::new());
+
+    let pb = indicatif::ProgressBar::new(files.len() as u64);
+    pb.set_style(
+        indicatif::ProgressStyle::default_bar()
+            .template("{spinner:.green} [{bar:40.cyan/blue}] {pos}/{len} files")
+            .unwrap()
+            .progress_chars("█▓░"),
+    );
+
+    files.par_iter().for_each(|file| {
+        let mut local: HashMap<String, u64> = HashMap::new();
+        if let Ok(f) = std::fs::File::open(&file.path) {
+            use std::io::BufRead;
+            let reader = std::io::BufReader::with_capacity(256 * 1024, f);
+            for line in reader.lines() {
+                let Ok(line) = line else { continue };
+                let Ok(record) = serde_json::from_str::<models::Record>(&line) else { continue };
+                let Some(msg) = record.as_message_record() else { continue };
+                for tool in msg.tool_calls() {
+                    *local.entry(tool.to_string()).or_default() += 1;
+                }
+            }
+        }
+        let mut global = tool_counts.lock().unwrap();
+        for (tool, count) in local {
+            *global.entry(tool).or_default() += count;
+        }
+        pb.inc(1);
+    });
+
+    pb.finish_and_clear();
+
+    let counts = tool_counts.into_inner().unwrap();
+    let mut sorted: Vec<_> = counts.into_iter().collect();
+    sorted.sort_by(|a, b| b.1.cmp(&a.1));
+
+    let max_count = sorted.first().map(|(_, c)| *c).unwrap_or(1);
+    let grand_total: u64 = sorted.iter().map(|(_, c)| c).sum();
+
+    println!("{}", "Tool Usage Frequency".bold().cyan());
+    println!("{}", "═".repeat(60));
+
+    for (tool, count) in sorted.iter().take(limit) {
+        let bar_len = (*count as f64 / max_count as f64 * 30.0) as usize;
+        let bar = "█".repeat(bar_len);
+        let pct = *count as f64 / grand_total as f64 * 100.0;
+        println!("  {:20} {:>10}  ({:>5.1}%)  {}", tool.bold(), format_count(*count), pct, bar.cyan());
+    }
+
+    println!("{}", "─".repeat(60));
+    println!("  {} total tool calls", format_count(grand_total));
+
+    Ok(())
+}
+
+fn print_freq_roles(files: &[config::SessionFile]) -> Result<()> {
+    use colored::*;
+    use rayon::prelude::*;
+    use std::collections::HashMap;
+    use std::sync::Mutex;
+
+    let role_counts: Mutex<HashMap<String, u64>> = Mutex::new(HashMap::new());
+
+    let pb = indicatif::ProgressBar::new(files.len() as u64);
+    pb.set_style(
+        indicatif::ProgressStyle::default_bar()
+            .template("{spinner:.green} [{bar:40.cyan/blue}] {pos}/{len} files")
+            .unwrap()
+            .progress_chars("█▓░"),
+    );
+
+    files.par_iter().for_each(|file| {
+        let mut local: HashMap<String, u64> = HashMap::new();
+        if let Ok(f) = std::fs::File::open(&file.path) {
+            use std::io::BufRead;
+            let reader = std::io::BufReader::with_capacity(256 * 1024, f);
+            for line in reader.lines() {
+                let Ok(line) = line else { continue };
+                let Ok(record) = serde_json::from_str::<models::Record>(&line) else { continue };
+                if record.is_message() {
+                    *local.entry(record.role_str().to_string()).or_default() += 1;
+                }
+            }
+        }
+        let mut global = role_counts.lock().unwrap();
+        for (role, count) in local {
+            *global.entry(role).or_default() += count;
+        }
+        pb.inc(1);
+    });
+
+    pb.finish_and_clear();
+
+    let counts = role_counts.into_inner().unwrap();
+    let mut sorted: Vec<_> = counts.into_iter().collect();
+    sorted.sort_by(|a, b| b.1.cmp(&a.1));
+
+    let max_count = sorted.first().map(|(_, c)| *c).unwrap_or(1);
+    let grand_total: u64 = sorted.iter().map(|(_, c)| c).sum();
+
+    println!("{}", "Message Role Frequency".bold().cyan());
+    println!("{}", "═".repeat(60));
+
+    for (role, count) in &sorted {
+        let bar_len = (*count as f64 / max_count as f64 * 40.0) as usize;
+        let bar = "█".repeat(bar_len);
+        let pct = *count as f64 / grand_total as f64 * 100.0;
+        println!("  {:20} {:>10}  ({:>5.1}%)  {}", role.bold(), format_count(*count), pct, bar.cyan());
+    }
+
+    println!("{}", "─".repeat(60));
+    println!("  {} total messages", format_count(grand_total));
+
+    Ok(())
+}
+
+fn format_count(n: u64) -> String {
+    let s = n.to_string();
+    let mut result = String::new();
+    for (i, c) in s.chars().rev().enumerate() {
+        if i > 0 && i % 3 == 0 {
+            result.push(',');
+        }
+        result.push(c);
+    }
+    result.chars().rev().collect()
 }
 
 fn format_bytes(bytes: u64) -> String {

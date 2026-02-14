@@ -174,6 +174,41 @@ smc context 394afc 50
 smc context 394afc 50 -C 5
 ```
 
+### `smc freq [mode]` (alias: `smc f`)
+
+Frequency analysis across all conversation data. Runs in parallel across all files.
+
+```bash
+# Character frequency (a-z, case-insensitive) — default
+smc freq
+smc freq chars
+
+# Word frequency (top words, 3+ chars)
+smc freq words
+smc freq words -n 50
+
+# Tool usage frequency
+smc freq tools
+
+# Message role frequency
+smc freq roles
+```
+
+Modes can be abbreviated: `c`, `w`, `t`, `r`.
+
+```
+Tool Usage Frequency
+════════════════════════════════════════════════════════════
+  Bash                     16,052  ( 28.5%)  ██████████████████████████████
+  Read                     13,526  ( 24.1%)  █████████████████████████
+  Edit                     11,794  ( 21.0%)  ██████████████████████
+  Grep                      5,492  (  9.8%)  ██████████
+  Write                     2,950  (  5.2%)  █████
+  ...
+────────────────────────────────────────────────────────────
+  56,241 total tool calls
+```
+
 ### `smc recent` (alias: `smc r`)
 
 Show the most recent messages across all sessions, sorted by timestamp.

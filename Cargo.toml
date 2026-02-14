@@ -1,6 +1,6 @@
 [package]
-name = "rustyscalpel"
-version = "0.3.0"
+name = "smc_cli"
+version = "0.3.3"
 edition = "2021"
 description = "Surgical search through Claude Code JSONL conversation logs"
 
