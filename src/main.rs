@@ -1,6 +1,7 @@
 mod config;
 mod display;
 mod models;
+mod relay;
 mod search;
 mod session;
 
@@ -183,6 +184,50 @@ enum Commands {
         #[arg(long)]
         role: Option<String>,
     },
+
+    /// Inter-Claude relay for real-time communication
+    Relay {
+        #[command(subcommand)]
+        action: RelayAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum RelayAction {
+    /// Register a Claude instance to a tmux pane
+    Register {
+        /// Instance name (e.g., claude727)
+        name: String,
+
+        /// tmux pane target (e.g., %0, session:window.pane)
+        #[arg(long, short)]
+        pane: Option<String>,
+    },
+
+    /// Unregister a Claude instance
+    Unregister {
+        /// Instance name
+        name: String,
+    },
+
+    /// Check for new messages and relay (called by Stop hook)
+    Check {
+        /// Transcript path (passed by hook via stdin if not specified)
+        #[arg(long)]
+        transcript: Option<String>,
+    },
+
+    /// Show registered instances
+    Status,
+
+    /// Send a message to another Claude instance
+    Send {
+        /// Target instance name
+        to: String,
+
+        /// Message text
+        message: String,
+    },
 }
 
 fn main() -> Result<()> {
@@ -303,6 +348,24 @@ fn main() -> Result<()> {
             let files = cfg.discover_jsonl_files()?;
             session::show_recent(&files, limit, role.as_deref())?;
         }
+
+        Commands::Relay { action } => match action {
+            RelayAction::Register { name, pane } => {
+                relay::register(&name, pane.as_deref())?;
+            }
+            RelayAction::Unregister { name } => {
+                relay::unregister(&name)?;
+            }
+            RelayAction::Check { transcript } => {
+                relay::check(transcript.as_deref())?;
+            }
+            RelayAction::Status => {
+                relay::status()?;
+            }
+            RelayAction::Send { to, message } => {
+                relay::send(&to, &message)?;
+            }
+        },
     }
 
     Ok(())
