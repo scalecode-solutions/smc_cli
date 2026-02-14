@@ -20,6 +20,8 @@ pub struct SearchOpts {
     pub max_results: usize,
     pub stdout_md: bool,
     pub md_file: Option<String>,
+    pub count_mode: bool,
+    pub json_mode: bool,
 }
 
 impl SearchOpts {
@@ -124,13 +126,37 @@ pub fn search(files: &[SessionFile], opts: &SearchOpts) -> Result<()> {
 
     pb.finish_and_clear();
 
+    // Count mode: aggregate by project
+    if opts.count_mode {
+        use std::collections::HashMap;
+        let mut counts: HashMap<String, usize> = HashMap::new();
+        for hits in &results {
+            for hit in hits {
+                *counts.entry(hit.project.clone()).or_default() += 1;
+            }
+        }
+        let mut sorted: Vec<_> = counts.into_iter().collect();
+        sorted.sort_by(|a, b| b.1.cmp(&a.1));
+        let total: usize = sorted.iter().map(|(_, c)| c).sum();
+
+        println!("Match counts for '{}'\n", opts.query_display());
+        for (project, count) in &sorted {
+            println!("  {:40} {:>5}", project, count);
+        }
+        println!("\n{} total matches across {} projects", total, sorted.len());
+        return Ok(());
+    }
+
     let mut total = 0;
     let needs_md = opts.stdout_md || opts.md_file.is_some();
     let mut md_lines: Vec<String> = Vec::new();
 
     for hits in &results {
         for hit in hits {
-            if !opts.stdout_md {
+            if opts.json_mode {
+                // Output as JSON line
+                print_hit_json(hit);
+            } else if !opts.stdout_md {
                 display::print_search_hit(
                     &hit.project,
                     &hit.session_id,
@@ -148,7 +174,7 @@ pub fn search(files: &[SessionFile], opts: &SearchOpts) -> Result<()> {
         }
     }
 
-    if !opts.stdout_md {
+    if !opts.json_mode && !opts.stdout_md {
         if total == 0 {
             println!("No results found for '{}'", opts.query_display());
         } else {
@@ -237,6 +263,26 @@ fn write_markdown_to(w: &mut dyn std::io::Write, opts: &SearchOpts, hits: &[Stri
     }
 
     Ok(())
+}
+
+fn print_hit_json(hit: &SearchHit) {
+    let msg = hit.record.as_message_record();
+    let text = msg.map(|m| m.text_content()).unwrap_or_default();
+    let timestamp = msg
+        .and_then(|m| m.timestamp.as_deref())
+        .unwrap_or("unknown");
+    let role = hit.record.role_str();
+
+    let obj = serde_json::json!({
+        "project": hit.project,
+        "session_id": hit.session_id,
+        "line": hit.line_num,
+        "role": role,
+        "timestamp": timestamp,
+        "matched_query": hit.matched_query,
+        "text": text,
+    });
+    println!("{}", serde_json::to_string(&obj).unwrap_or_default());
 }
 
 fn search_file(
