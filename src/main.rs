@@ -1,7 +1,7 @@
 mod config;
 mod display;
 mod models;
-mod relay;
+
 mod search;
 mod session;
 
@@ -171,6 +171,10 @@ enum Commands {
         /// Max items to show (for words mode)
         #[arg(long, short = 'n', default_value = "30")]
         limit: usize,
+
+        /// Count raw file bytes instead of parsed message content
+        #[arg(long)]
+        raw: bool,
     },
 
     /// Show most recent messages across all sessions
@@ -185,50 +189,8 @@ enum Commands {
         role: Option<String>,
     },
 
-    /// Inter-Claude relay for real-time communication
-    Relay {
-        #[command(subcommand)]
-        action: RelayAction,
-    },
 }
 
-#[derive(Subcommand)]
-enum RelayAction {
-    /// Register a Claude instance to a tmux pane
-    Register {
-        /// Instance name (e.g., claude727)
-        name: String,
-
-        /// tmux pane target (e.g., %0, session:window.pane)
-        #[arg(long, short)]
-        pane: Option<String>,
-    },
-
-    /// Unregister a Claude instance
-    Unregister {
-        /// Instance name
-        name: String,
-    },
-
-    /// Check for new messages and relay (called by Stop hook)
-    Check {
-        /// Transcript path (passed by hook via stdin if not specified)
-        #[arg(long)]
-        transcript: Option<String>,
-    },
-
-    /// Show registered instances
-    Status,
-
-    /// Send a message to another Claude instance
-    Send {
-        /// Target instance name
-        to: String,
-
-        /// Message text
-        message: String,
-    },
-}
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -333,9 +295,10 @@ fn main() -> Result<()> {
             print_projects(&files)?;
         }
 
-        Commands::Freq { mode, limit } => {
+        Commands::Freq { mode, limit, raw } => {
             let files = cfg.discover_jsonl_files()?;
             match mode.as_str() {
+                "chars" | "c" if raw => print_freq_chars_raw(&files)?,
                 "chars" | "c" => print_freq_chars(&files)?,
                 "words" | "w" => print_freq_words(&files, limit)?,
                 "tools" | "t" => print_freq_tools(&files, limit)?,
@@ -349,23 +312,6 @@ fn main() -> Result<()> {
             session::show_recent(&files, limit, role.as_deref())?;
         }
 
-        Commands::Relay { action } => match action {
-            RelayAction::Register { name, pane } => {
-                relay::register(&name, pane.as_deref())?;
-            }
-            RelayAction::Unregister { name } => {
-                relay::unregister(&name)?;
-            }
-            RelayAction::Check { transcript } => {
-                relay::check(transcript.as_deref())?;
-            }
-            RelayAction::Status => {
-                relay::status()?;
-            }
-            RelayAction::Send { to, message } => {
-                relay::send(&to, &message)?;
-            }
-        },
     }
 
     Ok(())
@@ -545,6 +491,77 @@ fn print_freq_chars(files: &[config::SessionFile]) -> Result<()> {
     );
 
     files.par_iter().for_each(|file| {
+        if let Ok(f) = std::fs::File::open(&file.path) {
+            use std::io::BufRead;
+            let reader = std::io::BufReader::with_capacity(256 * 1024, f);
+            for line in reader.lines() {
+                let Ok(line) = line else { continue };
+                let Ok(record) = serde_json::from_str::<models::Record>(&line) else { continue };
+                let Some(msg) = record.as_message_record() else { continue };
+                let text = msg.text_content();
+                for b in text.bytes() {
+                    let idx = match b {
+                        b'a'..=b'z' => (b - b'a') as usize,
+                        b'A'..=b'Z' => (b - b'A') as usize,
+                        _ => continue,
+                    };
+                    counts[idx].fetch_add(1, Ordering::Relaxed);
+                }
+            }
+        }
+        pb.inc(1);
+    });
+
+    pb.finish_and_clear();
+
+    let totals: Vec<u64> = counts.iter().map(|c| c.load(Ordering::Relaxed)).collect();
+    let max_count = *totals.iter().max().unwrap_or(&1);
+    let grand_total: u64 = totals.iter().sum();
+
+    println!("{}", "Character Frequency (a-z, case-insensitive, parsed content)".bold().cyan());
+    println!("{}", "═".repeat(60));
+
+    for (i, count) in totals.iter().enumerate() {
+        let letter = (b'a' + i as u8) as char;
+        let bar_len = (*count as f64 / max_count as f64 * 40.0) as usize;
+        let bar = "█".repeat(bar_len);
+        let pct = *count as f64 / grand_total as f64 * 100.0;
+        println!(
+            "  {}  {:>12}  ({:>5.2}%)  {}",
+            letter.to_string().bold(),
+            format_count(*count),
+            pct,
+            bar.cyan()
+        );
+    }
+
+    println!("{}", "─".repeat(60));
+    println!(
+        "  Total: {}  across {} files ({})",
+        format_count(grand_total).bold(),
+        files.len(),
+        format_bytes(files.iter().map(|f| f.size_bytes).sum())
+    );
+
+    Ok(())
+}
+
+fn print_freq_chars_raw(files: &[config::SessionFile]) -> Result<()> {
+    use colored::*;
+    use rayon::prelude::*;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    let counts: Vec<AtomicU64> = (0..26).map(|_| AtomicU64::new(0)).collect();
+
+    let pb = indicatif::ProgressBar::new(files.len() as u64);
+    pb.set_style(
+        indicatif::ProgressStyle::default_bar()
+            .template("{spinner:.green} [{bar:40.cyan/blue}] {pos}/{len} files")
+            .unwrap()
+            .progress_chars("█▓░"),
+    );
+
+    files.par_iter().for_each(|file| {
         if let Ok(data) = std::fs::read(&file.path) {
             for &b in &data {
                 let idx = match b {
@@ -564,7 +581,7 @@ fn print_freq_chars(files: &[config::SessionFile]) -> Result<()> {
     let max_count = *totals.iter().max().unwrap_or(&1);
     let grand_total: u64 = totals.iter().sum();
 
-    println!("{}", "Character Frequency (a-z, case-insensitive)".bold().cyan());
+    println!("{}", "Character Frequency (a-z, case-insensitive, raw JSONL bytes)".bold().cyan());
     println!("{}", "═".repeat(60));
 
     for (i, count) in totals.iter().enumerate() {
