@@ -8,6 +8,7 @@ use regex::Regex;
 use std::io::BufRead;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+#[derive(Default)]
 pub struct SearchOpts {
     pub queries: Vec<String>,
     pub is_regex: bool,

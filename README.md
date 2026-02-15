@@ -2,6 +2,7 @@
 
 [![Crates.io](https://img.shields.io/crates/v/smc-cli-cc.svg)](https://crates.io/crates/smc-cli-cc)
 [![Downloads](https://img.shields.io/crates/d/smc-cli-cc.svg)](https://crates.io/crates/smc-cli-cc)
+[![docs.rs](https://docs.rs/smc-cli-cc/badge.svg)](https://docs.rs/smc-cli-cc)
 [![MSRV](https://img.shields.io/badge/MSRV-1.70-blue.svg)](https://www.rust-lang.org)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
@@ -240,6 +241,45 @@ Tool Usage Frequency
 ```bash
 --path <PATH>    # Override Claude projects directory (default: ~/.claude/projects)
 ```
+
+---
+
+## Library Usage
+
+smc is also a Rust library. Add it to your project:
+
+```bash
+cargo add smc-cli-cc
+```
+
+```rust
+use smc_cli_cc::{config::Config, search::{self, SearchOpts}, analytics};
+
+// Discover all conversation files
+let cfg = Config::new(None)?;
+let files = cfg.discover_jsonl_files()?;
+
+// Search programmatically
+let opts = SearchOpts {
+    queries: vec!["authentication".into()],
+    project: Some("myapp".into()),
+    max_results: 10,
+    json_mode: true,
+    ..SearchOpts::default()
+};
+search::search(&files, &opts)?;
+
+// Parse a specific session
+use smc_cli_cc::session;
+let records = session::parse_records(&files[0])?;
+for record in &records {
+    if let Some(msg) = record.as_message_record() {
+        println!("{}: {}", record.role_str(), &msg.text_content()[..80]);
+    }
+}
+```
+
+Available modules: `config`, `models`, `search`, `session`, `display`, `analytics`.
 
 ---
 
