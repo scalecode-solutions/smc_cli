@@ -78,6 +78,10 @@ enum Commands {
         /// Output results as JSON (one per line)
         #[arg(long)]
         json: bool,
+
+        /// Include results from previous smc output (excluded by default)
+        #[arg(long, short = 'i')]
+        include_smc: bool,
     },
 
     /// List all sessions
@@ -196,6 +200,16 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
     let cfg = config::Config::new(cli.path.as_deref())?;
 
+    println!("{}", search::SMC_TAG_OPEN);
+
+    let result = run(cli, cfg);
+
+    println!("{}", search::SMC_TAG_CLOSE);
+
+    result
+}
+
+fn run(cli: Cli, cfg: config::Config) -> Result<()> {
     match cli.command {
         Commands::Search {
             query,
@@ -211,6 +225,7 @@ fn main() -> Result<()> {
             md,
             count,
             json,
+            include_smc,
         } => {
             let files = cfg.discover_jsonl_files()?;
             let opts = search::SearchOpts {
@@ -227,6 +242,7 @@ fn main() -> Result<()> {
                 md_file: md,
                 count_mode: count,
                 json_mode: json,
+                include_smc,
             };
             search::search(&files, &opts)?;
         }
