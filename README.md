@@ -2,6 +2,8 @@
 
 [![Crates.io](https://img.shields.io/crates/v/smc-cli-cc.svg)](https://crates.io/crates/smc-cli-cc)
 [![Downloads](https://img.shields.io/crates/d/smc-cli-cc.svg)](https://crates.io/crates/smc-cli-cc)
+[![docs.rs](https://docs.rs/smc-cli-cc/badge.svg)](https://docs.rs/smc-cli-cc)
+[![MSRV](https://img.shields.io/badge/MSRV-1.70-blue.svg)](https://www.rust-lang.org)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 > Surgical search through Claude Code conversation logs. Built in Rust for speed.
