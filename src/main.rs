@@ -89,6 +89,22 @@ enum Commands {
         /// Exclude a specific session ID
         #[arg(long)]
         exclude_session: Option<String>,
+
+        /// Filter to messages that touch a file path (in tool inputs/results)
+        #[arg(long)]
+        file: Option<String>,
+
+        /// Search only within tool input content (commands, arguments)
+        #[arg(long)]
+        tool_input: bool,
+
+        /// Search only within thinking blocks
+        #[arg(long)]
+        thinking: bool,
+
+        /// Exclude thinking blocks from search
+        #[arg(long)]
+        no_thinking: bool,
     },
 
     /// List all sessions
@@ -238,6 +254,10 @@ fn run(cli: Cli, cfg: config::Config) -> Result<()> {
             json,
             include_smc,
             exclude_session,
+            file,
+            tool_input,
+            thinking,
+            no_thinking,
         } => {
             let files = cfg.discover_jsonl_files()?;
             let opts = search::SearchOpts {
@@ -250,6 +270,10 @@ fn run(cli: Cli, cfg: config::Config) -> Result<()> {
                 after,
                 before,
                 branch,
+                file,
+                tool_input,
+                thinking_only: thinking,
+                no_thinking,
                 max_results: max,
                 stdout_md: output,
                 md_file: md,

@@ -19,6 +19,10 @@ pub struct SearchOpts {
     pub after: Option<String>,
     pub before: Option<String>,
     pub branch: Option<String>,
+    pub file: Option<String>,
+    pub tool_input: bool,
+    pub thinking_only: bool,
+    pub no_thinking: bool,
     pub max_results: usize,
     pub stdout_md: bool,
     pub md_file: Option<String>,
@@ -509,8 +513,30 @@ fn search_file(
             }
         }
 
+        // File path filter — record must touch this file in tool inputs/results
+        if let Some(file_path) = &opts.file {
+            if !msg.touches_file(file_path) {
+                continue;
+            }
+        }
+
+        // Choose what text to search based on mode
+        let text = if opts.thinking_only {
+            msg.thinking_content()
+        } else if opts.no_thinking {
+            msg.text_content_no_thinking()
+        } else if opts.tool_input {
+            msg.tool_input_content()
+        } else {
+            msg.text_content()
+        };
+
+        // Skip empty content (e.g., thinking_only on a message with no thinking)
+        if text.is_empty() {
+            continue;
+        }
+
         // Skip smc output unless --include-smc
-        let text = msg.text_content();
         if !opts.include_smc && text.contains(SMC_TAG_OPEN) {
             continue;
         }

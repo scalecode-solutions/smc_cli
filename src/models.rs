@@ -124,4 +124,91 @@ impl MessageRecord {
             _ => vec![],
         }
     }
+
+    /// Extract only tool input content (the arguments passed to tools).
+    pub fn tool_input_content(&self) -> String {
+        match &self.message.content {
+            MessageContent::Blocks(blocks) => {
+                let mut parts = Vec::new();
+                for block in blocks {
+                    if let ContentBlock::ToolUse { name, input, .. } = block {
+                        parts.push(format!("[{}] {}", name, input));
+                    }
+                }
+                parts.join("\n")
+            }
+            _ => String::new(),
+        }
+    }
+
+    /// Extract only thinking block content.
+    pub fn thinking_content(&self) -> String {
+        match &self.message.content {
+            MessageContent::Blocks(blocks) => {
+                let mut parts = Vec::new();
+                for block in blocks {
+                    if let ContentBlock::Thinking { thinking } = block {
+                        parts.push(thinking.clone());
+                    }
+                }
+                parts.join("\n")
+            }
+            _ => String::new(),
+        }
+    }
+
+    /// Extract text content excluding thinking blocks.
+    pub fn text_content_no_thinking(&self) -> String {
+        match &self.message.content {
+            MessageContent::Text(s) => s.clone(),
+            MessageContent::Blocks(blocks) => {
+                let mut parts = Vec::new();
+                for block in blocks {
+                    match block {
+                        ContentBlock::Text { text } => parts.push(text.clone()),
+                        ContentBlock::ToolUse { name, input, .. } => {
+                            parts.push(format!("[tool: {}] {}", name, input));
+                        }
+                        ContentBlock::ToolResult { content, .. } => {
+                            if let Some(c) = content {
+                                parts.push(format!("[result] {}", c));
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                parts.join("\n")
+            }
+        }
+    }
+
+    /// Check if any tool input references a file path (substring match).
+    pub fn touches_file(&self, path: &str) -> bool {
+        let path_lower = path.to_lowercase();
+        match &self.message.content {
+            MessageContent::Blocks(blocks) => {
+                for block in blocks {
+                    match block {
+                        ContentBlock::ToolUse { input, .. } => {
+                            let s = input.to_string().to_lowercase();
+                            if s.contains(&path_lower) {
+                                return true;
+                            }
+                        }
+                        ContentBlock::ToolResult { content, .. } => {
+                            if let Some(c) = content {
+                                let s = c.to_string().to_lowercase();
+                                if s.contains(&path_lower) {
+                                    return true;
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                false
+            }
+            _ => false,
+        }
+    }
 }

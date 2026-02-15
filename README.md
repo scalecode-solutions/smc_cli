@@ -69,6 +69,10 @@ smc search "config" --tool Bash                    # Filter by tool name
 smc search "merge" --branch main                   # Filter by git branch
 smc search "fn\s+\w+_test" -e                      # Regex mode
 smc search "todo" -n 10                            # Limit results
+smc search "git push" --tool-input                 # Search tool commands/arguments only
+smc search --file src/main.rs "refactor"           # Messages that touched a file
+smc search "architecture" --thinking               # Search only thinking blocks
+smc search "deploy" --no-thinking                  # Exclude thinking blocks
 ```
 
 ### Search Flags
@@ -89,6 +93,10 @@ smc search "todo" -n 10                            # Limit results
 | `--json` | | Output as JSON lines |
 | `--output` | `-o` | Markdown to stdout |
 | `--md <FILE>` | | Save results to markdown file |
+| `--file <PATH>` | | Filter to messages that touch a file path |
+| `--tool-input` | | Search only within tool input content |
+| `--thinking` | | Search only within thinking blocks |
+| `--no-thinking` | | Exclude thinking blocks from search |
 | `--include-smc` | `-i` | Include previous smc output (excluded by default) |
 | `--exclude-session <ID>` | | Skip a specific session |
 
