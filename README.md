@@ -1,5 +1,9 @@
 # smc — Search My Claude
 
+[![Crates.io](https://img.shields.io/crates/v/smc-cli-cc.svg)](https://crates.io/crates/smc-cli-cc)
+[![Downloads](https://img.shields.io/crates/d/smc-cli-cc.svg)](https://crates.io/crates/smc-cli-cc)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 > Surgical search through Claude Code conversation logs. Built in Rust for speed.
 
 Claude Code stores every conversation as JSONL files — messages, tool calls, thinking blocks, timestamps, git context — but provides no way to search through them after context compaction. **smc** fixes that.
