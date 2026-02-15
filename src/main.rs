@@ -75,6 +75,10 @@ enum Commands {
         #[arg(long, short)]
         count: bool,
 
+        /// Condensed summary: projects, roles, date range, top topics
+        #[arg(long)]
+        summary: bool,
+
         /// Output results as JSON (one per line)
         #[arg(long)]
         json: bool,
@@ -82,6 +86,10 @@ enum Commands {
         /// Include results from previous smc output (excluded by default)
         #[arg(long, short = 'i')]
         include_smc: bool,
+
+        /// Exclude a specific session ID
+        #[arg(long)]
+        exclude_session: Option<String>,
     },
 
     /// List all sessions
@@ -191,6 +199,10 @@ enum Commands {
         /// Filter by role
         #[arg(long)]
         role: Option<String>,
+
+        /// Filter by project name (substring match)
+        #[arg(long, short)]
+        project: Option<String>,
     },
 
 }
@@ -224,8 +236,10 @@ fn run(cli: Cli, cfg: config::Config) -> Result<()> {
             output,
             md,
             count,
+            summary,
             json,
             include_smc,
+            exclude_session,
         } => {
             let files = cfg.discover_jsonl_files()?;
             let opts = search::SearchOpts {
@@ -241,8 +255,10 @@ fn run(cli: Cli, cfg: config::Config) -> Result<()> {
                 stdout_md: output,
                 md_file: md,
                 count_mode: count,
+                summary_mode: summary,
                 json_mode: json,
                 include_smc,
+                exclude_session,
             };
             search::search(&files, &opts)?;
         }
@@ -323,8 +339,15 @@ fn run(cli: Cli, cfg: config::Config) -> Result<()> {
             }
         }
 
-        Commands::Recent { limit, role } => {
-            let files = cfg.discover_jsonl_files()?;
+        Commands::Recent { limit, role, project } => {
+            let mut files = cfg.discover_jsonl_files()?;
+            if let Some(proj) = &project {
+                files.retain(|f| {
+                    f.project_name
+                        .to_lowercase()
+                        .contains(&proj.to_lowercase())
+                });
+            }
             session::show_recent(&files, limit, role.as_deref())?;
         }
 

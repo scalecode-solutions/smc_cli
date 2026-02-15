@@ -56,21 +56,87 @@ smc search "swiftui"                              # Basic search
 smc search "shelby" "upstream" "donut"             # Multiple terms (OR)
 smc search "bug" --role user                       # Only user messages
 smc search "animation" -p Clingy                   # Filter by project
-smc search "refactor" --after 2026-02-01           # Date filter
-smc search "swift" --tool Bash                     # Filter by tool
+smc search "refactor" --after 2026-02-01           # After a date
+smc search "todo" --before 2026-01-15             # Before a date
+smc search "swift" --tool Bash                     # Filter by tool name
 smc search "merge" --branch main                   # Filter by git branch
-smc search "func\s+\w+View" -e                     # Regex
+smc search "func\s+\w+View" -e                     # Regex mode
 smc search "todo" -n 10                            # Limit results
 ```
+
+### Search Flags
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--role <ROLE>` | | Filter by role: `user`, `assistant`, `system` |
+| `--tool <TOOL>` | | Filter by tool name (substring match) |
+| `--project <NAME>` | `-p` | Filter by project name (substring match) |
+| `--after <DATE>` | | Only results after date (YYYY-MM-DD) |
+| `--before <DATE>` | | Only results before date (YYYY-MM-DD) |
+| `--branch <BRANCH>` | | Filter by git branch |
+| `--regex` | `-e` | Treat query as regex |
+| `--max <N>` | `-n` | Maximum results (default: 50) |
+| `--count` | `-c` | Show match counts per project |
+| `--summary` | | Condensed overview: projects, roles, dates, topics |
+| `--json` | | Output as JSON lines |
+| `--output` | `-o` | Markdown to stdout |
+| `--md <FILE>` | | Save results to markdown file |
+| `--include-smc` | `-i` | Include previous smc output (excluded by default) |
+| `--exclude-session <ID>` | | Skip a specific session |
+
+### AI-Friendly Features
+
+smc is designed to work well when used by AI assistants inside Claude Code sessions:
+
+```bash
+smc search "bug" --exclude-session 394af           # Skip a specific session
+smc search "bug" -i                                # Include previous smc output (excluded by default)
+```
+
+All smc output is wrapped in `<smc-cc-cli>` tags. By default, search excludes records containing these tags — preventing the recursion problem where an AI searching for "X" finds its own previous search results for "X". Use `-i`/`--include-smc` to opt back in.
 
 ### Output Modes
 
 ```bash
 smc search "auth" --count                          # Match counts per project
+smc search "auth" --summary                        # Condensed overview with topics
 smc search "auth" --json                           # JSON lines (pipe to jq)
-smc search "auth" -o                               # Markdown to stdout
+smc search "auth" -o                               # Markdown to stdout (pipeable)
 smc search "auth" --md report.md                   # Save to markdown file
 smc search "auth" -o --md report.md                # Both
+```
+
+Summary mode gives a condensed overview — projects, roles, date range, and auto-extracted topics — without flooding context:
+
+```
+Summary for 'shader'
+
+  Projects:
+    Clingy                                    36 matches
+    misc/metaltictactoe                       14 matches
+
+  Roles:
+    assistant                                 39
+    user                                      11
+
+  Dates:    2026-02-09 → 2026-02-12
+  Sessions: 2
+
+  Topics:   metal, float, swift, animation, board, swiftui, glow
+
+50 total matches
+```
+
+Count mode is more compact — just per-project totals:
+
+```
+Match counts for 'auth'
+
+  -Users-travis-GitHub-misc-myapp           12
+  -Users-travis-GitHub-misc-relayterm        3
+  -Users-travis-GitHub-misc-smc_cli          1
+
+16 total matches across 3 projects
 ```
 
 ---
@@ -80,8 +146,10 @@ smc search "auth" -o --md report.md                # Both
 ```bash
 # List sessions (most recent first)
 smc sessions                           # Default: 20 most recent
+smc sessions -n 50                     # Show more
 smc sessions -p MyProject              # Filter by project
-smc sessions --after 2026-02-01        # Date range
+smc sessions --after 2026-02-01        # After a date
+smc sessions --before 2026-02-14       # Before a date
 
 # View a conversation
 smc show 394afc                        # Pretty-print with colors
@@ -96,8 +164,14 @@ smc context 394afc 50 -C 5            # Wider context window
 smc tools 394afc
 
 # Export for sharing
-smc export 394afc                      # Save as markdown
+smc export 394afc                      # Save as <session-id>.md
+smc export 394afc --md report.md       # Custom output path
 smc export 394afc -o                   # Pipe to stdout
+
+# Recent messages
+smc recent                             # Last 10 across all sessions
+smc recent -p MyProject                # Filter by project
+smc recent --role user                 # Only user messages
 ```
 
 ---
@@ -114,7 +188,8 @@ smc projects     # All projects with session counts and date ranges
 ### Frequency Analysis
 
 ```bash
-smc freq              # Character frequency (a-z) — default
+smc freq              # Character frequency (parsed message content) — default
+smc freq --raw        # Character frequency (raw JSONL bytes)
 smc freq words        # Most common words
 smc freq tools        # Tool usage breakdown
 smc freq roles        # Message counts by role
@@ -122,6 +197,21 @@ smc freq words -n 50  # Top 50 words
 ```
 
 Modes can be abbreviated: `chars`/`c`, `words`/`w`, `tools`/`t`, `roles`/`r`.
+
+The default `freq chars` parses JSONL and counts only message content, producing accurate English letter distributions. Use `--raw` to count all bytes in the JSONL files (faster, but includes JSON structure and encoded data).
+
+```
+Character Frequency (a-z, case-insensitive, parsed content)
+════════════════════════════════════════════════════════════
+  e    16,489,526  (12.03%)  ████████████████████████████████████████
+  t    12,567,821  ( 9.17%)  ██████████████████████████████
+  a    10,824,395  ( 7.89%)  ██████████████████████████
+  o    10,156,782  ( 7.41%)  █████████████████████████
+  i     9,438,210  ( 6.89%)  ███████████████████████
+  ...
+────────────────────────────────────────────────────────────
+  Total: 137,128,394  across 244 files (2.85GB)
+```
 
 ```
 Tool Usage Frequency
@@ -162,12 +252,13 @@ smc uses [Rayon](https://github.com/rayon-rs/rayon) for parallel file processing
 
 ## Performance
 
-Benchmarked on Apple Silicon, 207 sessions, 2.8GB total:
+Benchmarked on Apple Silicon, 244 sessions, 2.85GB total:
 
 | Operation | Time |
 |-----------|------|
 | `search` (full scan) | ~0.5s |
-| `freq chars` (2B+ characters) | ~2s |
+| `freq chars` (parsed, 137M chars) | ~7s |
+| `freq chars --raw` (2B+ chars) | ~80s |
 | `stats` | instant |
 | `show` | instant to ~1s |
 
@@ -187,9 +278,9 @@ cargo install --path .
 ### Version Management
 
 ```bash
-make patch    # 0.3.3 → 0.3.4
-make minor    # 0.3.3 → 0.4.0
-make major    # 0.3.3 → 1.0.0
+make patch    # 0.5.0 → 0.5.1
+make minor    # 0.5.0 → 0.6.0
+make major    # 0.5.0 → 1.0.0
 make current  # Show current version
 ```
 

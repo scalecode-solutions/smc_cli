@@ -21,8 +21,10 @@ pub struct SearchOpts {
     pub stdout_md: bool,
     pub md_file: Option<String>,
     pub count_mode: bool,
+    pub summary_mode: bool,
     pub json_mode: bool,
     pub include_smc: bool,
+    pub exclude_session: Option<String>,
 }
 
 pub const SMC_TAG_OPEN: &str = "<smc-cc-cli>";
@@ -89,17 +91,24 @@ pub fn search(files: &[SessionFile], opts: &SearchOpts) -> Result<()> {
     anyhow::ensure!(!opts.queries.is_empty(), "Search query cannot be empty");
     let matcher = Matcher::new(&opts.queries, opts.is_regex)?;
 
-    // Filter files by project if specified
+    // Filter files by project and exclude specific sessions
     let filtered_files: Vec<&SessionFile> = files
         .iter()
         .filter(|f| {
             if let Some(proj) = &opts.project {
-                f.project_name
+                if !f.project_name
                     .to_lowercase()
                     .contains(&proj.to_lowercase())
-            } else {
-                true
+                {
+                    return false;
+                }
             }
+            if let Some(exc) = &opts.exclude_session {
+                if f.session_id.starts_with(exc.as_str()) {
+                    return false;
+                }
+            }
+            true
         })
         .collect();
 
@@ -148,6 +157,110 @@ pub fn search(files: &[SessionFile], opts: &SearchOpts) -> Result<()> {
             println!("  {:40} {:>5}", project, count);
         }
         println!("\n{} total matches across {} projects", total, sorted.len());
+        return Ok(());
+    }
+
+    // Summary mode: condensed overview
+    if opts.summary_mode {
+        use std::collections::{HashMap, HashSet};
+
+        let mut project_counts: HashMap<String, usize> = HashMap::new();
+        let mut role_counts: HashMap<String, usize> = HashMap::new();
+        let mut sessions: HashSet<String> = HashSet::new();
+        let mut earliest: Option<String> = None;
+        let mut latest: Option<String> = None;
+        let mut word_counts: HashMap<String, usize> = HashMap::new();
+
+        // Stop words to skip in topic extraction
+        let stop_words: HashSet<&str> = [
+            "the", "and", "for", "that", "this", "with", "from", "are", "was",
+            "were", "been", "have", "has", "had", "not", "but", "what", "all",
+            "can", "her", "his", "one", "our", "out", "you", "your", "which",
+            "their", "them", "then", "than", "into", "could", "would", "there",
+            "about", "just", "like", "some", "also", "more", "when", "will",
+            "each", "make", "way", "she", "how", "its", "may", "use", "used",
+            "using", "let", "get", "got", "did", "does", "done", "any", "very",
+            "here", "where", "should", "need", "don", "doesn", "isn", "it's",
+            "i'll", "i'm", "we're", "they", "it's", "that's", "file", "line",
+            "code", "run", "set", "new", "see", "now", "try", "want",
+        ].iter().copied().collect();
+
+        for hits in &results {
+            for hit in hits {
+                *project_counts.entry(hit.project.clone()).or_default() += 1;
+                *role_counts.entry(hit.record.role_str().to_string()).or_default() += 1;
+                sessions.insert(format!("{}:{}", hit.project, hit.session_id));
+
+                if let Some(msg) = hit.record.as_message_record() {
+                    if let Some(ts) = &msg.timestamp {
+                        let ts_date = ts.get(..10).unwrap_or(ts).to_string();
+                        if earliest.as_ref().map_or(true, |e| ts_date < *e) {
+                            earliest = Some(ts_date.clone());
+                        }
+                        if latest.as_ref().map_or(true, |l| ts_date > *l) {
+                            latest = Some(ts_date);
+                        }
+                    }
+
+                    // Extract topic words
+                    let text = msg.text_content();
+                    for word in text.split(|c: char| !c.is_alphanumeric() && c != '_') {
+                        let w = word.to_lowercase();
+                        if w.len() >= 4 && !stop_words.contains(w.as_str()) {
+                            *word_counts.entry(w).or_default() += 1;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Also skip the query terms themselves from topics
+        let query_lower: Vec<String> = opts.queries.iter().map(|q| q.to_lowercase()).collect();
+
+        let mut top_words: Vec<_> = word_counts.into_iter()
+            .filter(|(w, _)| !query_lower.iter().any(|q| w.contains(q.as_str())))
+            .collect();
+        top_words.sort_by(|a, b| b.1.cmp(&a.1));
+
+        let total: usize = project_counts.values().sum();
+
+        println!("Summary for '{}'\n", opts.query_display());
+
+        // Projects
+        let mut proj_sorted: Vec<_> = project_counts.into_iter().collect();
+        proj_sorted.sort_by(|a, b| b.1.cmp(&a.1));
+        println!("  Projects:");
+        for (project, count) in &proj_sorted {
+            println!("    {:38} {:>5} matches", project, count);
+        }
+
+        // Roles
+        println!("\n  Roles:");
+        let mut role_sorted: Vec<_> = role_counts.into_iter().collect();
+        role_sorted.sort_by(|a, b| b.1.cmp(&a.1));
+        for (role, count) in &role_sorted {
+            println!("    {:38} {:>5}", role, count);
+        }
+
+        // Date range
+        if let (Some(e), Some(l)) = (&earliest, &latest) {
+            if e == l {
+                println!("\n  Date:     {}", e);
+            } else {
+                println!("\n  Dates:    {} → {}", e, l);
+            }
+        }
+
+        // Sessions
+        println!("  Sessions: {}", sessions.len());
+
+        // Topics
+        let topics: Vec<&str> = top_words.iter().take(10).map(|(w, _)| w.as_str()).collect();
+        if !topics.is_empty() {
+            println!("\n  Topics:   {}", topics.join(", "));
+        }
+
+        println!("\n{} total matches", total);
         return Ok(());
     }
 
