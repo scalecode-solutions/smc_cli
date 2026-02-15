@@ -52,15 +52,15 @@ Session IDs support prefix matching — type just enough to be unique (e.g., `sm
 The core feature. Parallel full-text search across every message, tool call, tool result, and thinking block.
 
 ```bash
-smc search "swiftui"                              # Basic search
-smc search "bug" "error" "crash"             # Multiple terms (OR)
-smc search "bug" --role user                       # Only user messages
-smc search "animation" -p myapp                   # Filter by project
-smc search "refactor" --after 2026-02-01           # After a date
-smc search "todo" --before 2026-01-15             # Before a date
-smc search "swift" --tool Bash                     # Filter by tool name
+smc search "authentication"                        # Basic search
+smc search "bug" "error" "crash"                   # Multiple terms (OR)
+smc search "refactor" --role user                  # Only user messages
+smc search "deploy" -p myapp                       # Filter by project
+smc search "migration" --after 2026-01-01          # After a date
+smc search "hotfix" --before 2026-02-01            # Before a date
+smc search "config" --tool Bash                    # Filter by tool name
 smc search "merge" --branch main                   # Filter by git branch
-smc search "func\s+\w+View" -e                     # Regex mode
+smc search "fn\s+\w+_test" -e                      # Regex mode
 smc search "todo" -n 10                            # Limit results
 ```
 
@@ -109,20 +109,20 @@ smc search "auth" -o --md report.md                # Both
 Summary mode gives a condensed overview — projects, roles, date range, and auto-extracted topics — without flooding context:
 
 ```
-Summary for 'shader'
+Summary for 'deploy'
 
   Projects:
-    myapp                                    36 matches
-    misc/metaltictactoe                       14 matches
+    myapp                                     36 matches
+    backend-api                               14 matches
 
   Roles:
     assistant                                 39
     user                                      11
 
-  Dates:    2026-02-09 → 2026-02-12
-  Sessions: 2
+  Dates:    2026-01-15 → 2026-02-10
+  Sessions: 4
 
-  Topics:   metal, float, swift, animation, board, swiftui, glow
+  Topics:   docker, nginx, config, staging, migration, rollback, endpoint
 
 50 total matches
 ```
