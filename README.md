@@ -54,6 +54,7 @@ The core feature. Parallel full-text search across every message, tool call, too
 ```bash
 smc search "authentication"                        # Basic search
 smc search "bug" "error" "crash"                   # Multiple terms (OR)
+smc search "bug" "deploy" -a                       # Multiple terms (AND)
 smc search "refactor" --role user                  # Only user messages
 smc search "deploy" -p myapp                       # Filter by project
 smc search "migration" --after 2026-01-01          # After a date
@@ -74,6 +75,7 @@ smc search "todo" -n 10                            # Limit results
 | `--after <DATE>` | | Only results after date (YYYY-MM-DD) |
 | `--before <DATE>` | | Only results before date (YYYY-MM-DD) |
 | `--branch <BRANCH>` | | Filter by git branch |
+| `--and` | `-a` | Require ALL terms to match (default is OR) |
 | `--regex` | `-e` | Treat query as regex |
 | `--max <N>` | `-n` | Maximum results (default: 50) |
 | `--count` | `-c` | Show match counts per project |

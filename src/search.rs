@@ -11,6 +11,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 pub struct SearchOpts {
     pub queries: Vec<String>,
     pub is_regex: bool,
+    pub and_mode: bool,
     pub role: Option<String>,
     pub tool: Option<String>,
     pub project: Option<String>,
@@ -39,10 +40,11 @@ impl SearchOpts {
 struct Matcher {
     regexes: Vec<Regex>,
     plains: Vec<String>,
+    and_mode: bool,
 }
 
 impl Matcher {
-    fn new(queries: &[String], is_regex: bool) -> Result<Self> {
+    fn new(queries: &[String], is_regex: bool, and_mode: bool) -> Result<Self> {
         if is_regex {
             let regexes = queries
                 .iter()
@@ -51,16 +53,21 @@ impl Matcher {
             Ok(Matcher {
                 regexes,
                 plains: vec![],
+                and_mode,
             })
         } else {
             Ok(Matcher {
                 regexes: vec![],
                 plains: queries.iter().map(|q| q.to_lowercase()).collect(),
+                and_mode,
             })
         }
     }
 
     fn first_matching_query(&self, text: &str) -> Option<String> {
+        if self.and_mode {
+            return self.all_match(text);
+        }
         if !self.regexes.is_empty() {
             for re in &self.regexes {
                 if let Some(m) = re.find(text) {
@@ -77,6 +84,28 @@ impl Matcher {
         }
         None
     }
+
+    fn all_match(&self, text: &str) -> Option<String> {
+        if !self.regexes.is_empty() {
+            let mut matches = Vec::new();
+            for re in &self.regexes {
+                if let Some(m) = re.find(text) {
+                    matches.push(m.as_str().to_string());
+                } else {
+                    return None;
+                }
+            }
+            Some(matches.join(" + "))
+        } else {
+            let lower = text.to_lowercase();
+            for q in &self.plains {
+                if !lower.contains(q.as_str()) {
+                    return None;
+                }
+            }
+            Some(self.plains.join(" + "))
+        }
+    }
 }
 
 struct SearchHit {
@@ -89,7 +118,7 @@ struct SearchHit {
 
 pub fn search(files: &[SessionFile], opts: &SearchOpts) -> Result<()> {
     anyhow::ensure!(!opts.queries.is_empty(), "Search query cannot be empty");
-    let matcher = Matcher::new(&opts.queries, opts.is_regex)?;
+    let matcher = Matcher::new(&opts.queries, opts.is_regex, opts.and_mode)?;
 
     // Filter files by project and exclude specific sessions
     let filtered_files: Vec<&SessionFile> = files
