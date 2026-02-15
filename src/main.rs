@@ -35,6 +35,10 @@ enum Commands {
         #[arg(long, short = 'e')]
         regex: bool,
 
+        /// Require ALL terms to match (default is OR)
+        #[arg(long, short = 'a')]
+        and: bool,
+
         /// Filter by role (user, assistant, system)
         #[arg(long)]
         role: Option<String>,
@@ -226,6 +230,7 @@ fn run(cli: Cli, cfg: config::Config) -> Result<()> {
         Commands::Search {
             query,
             regex,
+            and,
             role,
             tool,
             project,
@@ -245,6 +250,7 @@ fn run(cli: Cli, cfg: config::Config) -> Result<()> {
             let opts = search::SearchOpts {
                 queries: query,
                 is_regex: regex,
+                and_mode: and,
                 role,
                 tool,
                 project,
