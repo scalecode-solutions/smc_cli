@@ -22,7 +22,11 @@ pub struct SearchOpts {
     pub md_file: Option<String>,
     pub count_mode: bool,
     pub json_mode: bool,
+    pub include_smc: bool,
 }
+
+pub const SMC_TAG_OPEN: &str = "<smc-cc-cli>";
+pub const SMC_TAG_CLOSE: &str = "</smc-cc-cli>";
 
 impl SearchOpts {
     pub fn query_display(&self) -> String {
@@ -362,8 +366,13 @@ fn search_file(
             }
         }
 
-        // Text match
+        // Skip smc output unless --include-smc
         let text = msg.text_content();
+        if !opts.include_smc && text.contains(SMC_TAG_OPEN) {
+            continue;
+        }
+
+        // Text match
         if let Some(matched) = matcher.first_matching_query(&text) {
             hit_count.fetch_add(1, Ordering::Relaxed);
             hits.push(SearchHit {
