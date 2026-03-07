@@ -33,7 +33,7 @@ struct ProjectRecord {
 
 // ── run ────────────────────────────────────────────────────────────────────
 
-pub fn run<W: Write>(opts: &ProjectsOpts, files: &[SessionFile], em: &mut Emitter<W>) -> Result<()> {
+pub fn run<W: Write>(_opts: &ProjectsOpts, files: &[SessionFile], em: &mut Emitter<W>) -> Result<()> {
     struct Info {
         sessions: usize,
         total_size: u64,

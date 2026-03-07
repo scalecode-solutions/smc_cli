@@ -123,8 +123,7 @@ fn extract_project_name(dir_name: &str) -> String {
     } else {
         parts
             .iter()
-            .filter(|p| !p.is_empty() && **p != "Users")
-            .next_back()
+            .rfind(|p| !p.is_empty() && **p != "Users")
             .unwrap_or(&dir_name)
             .to_string()
     }

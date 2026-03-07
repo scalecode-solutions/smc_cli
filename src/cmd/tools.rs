@@ -29,7 +29,7 @@ struct ToolRecord {
 
 // ── run ────────────────────────────────────────────────────────────────────
 
-pub fn run<W: Write>(opts: &ToolsOpts, file: &SessionFile, em: &mut Emitter<W>) -> Result<()> {
+pub fn run<W: Write>(_opts: &ToolsOpts, file: &SessionFile, em: &mut Emitter<W>) -> Result<()> {
     let records = crate::cmd::parse_records(file)?;
     let start = std::time::Instant::now();
 

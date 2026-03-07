@@ -37,7 +37,7 @@ struct ProjectStat {
 
 // ── run ────────────────────────────────────────────────────────────────────
 
-pub fn run<W: Write>(opts: &StatsOpts, files: &[SessionFile], em: &mut Emitter<W>) -> Result<()> {
+pub fn run<W: Write>(_opts: &StatsOpts, files: &[SessionFile], em: &mut Emitter<W>) -> Result<()> {
     let total_size: u64 = files.iter().map(|f| f.size_bytes).sum();
 
     let mut projects: HashMap<String, (usize, u64)> = HashMap::new();

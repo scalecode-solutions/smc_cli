@@ -37,41 +37,41 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Search across all conversations
+    /// Parallel full-text search across all conversations
     #[command(visible_alias = "s")]
     Search(SearchArgs),
 
-    /// List sessions with metadata
+    /// List sessions with previews, dates, and sizes
     #[command(visible_alias = "ls")]
     Sessions(SessionsArgs),
 
-    /// Show a conversation
+    /// Pretty-print a conversation as JSONL message records
     Show(ShowArgs),
 
-    /// List tool calls in a session
+    /// List every tool call in a session with timestamps
     #[command(visible_alias = "t")]
     Tools(ToolsArgs),
 
-    /// Aggregate statistics
+    /// Aggregate statistics: sessions, sizes, top projects
     Stats,
 
-    /// Export a session as markdown
+    /// Export a session as markdown (file or stdout)
     #[command(visible_alias = "e")]
     Export(ExportArgs),
 
-    /// Show messages around a specific line
+    /// Show messages around a specific JSONL line number
     #[command(visible_alias = "ctx")]
     Context(ContextArgs),
 
-    /// List projects with stats
+    /// List projects with session counts, sizes, and date ranges
     #[command(visible_alias = "p")]
     Projects,
 
-    /// Frequency analysis
+    /// Frequency analysis: chars, words, tools, or roles
     #[command(visible_alias = "f")]
     Freq(FreqArgs),
 
-    /// Most recent messages across sessions
+    /// Most recent messages across all sessions
     #[command(visible_alias = "r")]
     Recent(RecentArgs),
 }
@@ -79,6 +79,13 @@ enum Commands {
 // ── search ─────────────────────────────────────────────────────────────────
 
 #[derive(Parser)]
+#[command(
+    about = "Parallel full-text search across all conversations",
+    long_about = "Parallel full-text search across every message, tool call, tool result, \
+                  and thinking block in your Claude Code conversation logs. Supports \
+                  multi-term OR/AND, regex, role/tool/project/date/branch filters, \
+                  file-path matching, and thinking-block isolation."
+)]
 struct SearchArgs {
     /// Search queries (multiple terms are OR'd together)
     query: Vec<String>,
@@ -147,6 +154,12 @@ struct SearchArgs {
 // ── sessions ───────────────────────────────────────────────────────────────
 
 #[derive(Parser)]
+#[command(
+    about = "List sessions with previews, dates, and sizes",
+    long_about = "List conversation sessions sorted by date. Each record includes the \
+                  session ID, project name, file size, first timestamp, first user \
+                  message preview, and message count."
+)]
 struct SessionsArgs {
     /// Maximum sessions to show
     #[arg(long, short = 'n', default_value = "20")]
@@ -168,6 +181,12 @@ struct SessionsArgs {
 // ── show ───────────────────────────────────────────────────────────────────
 
 #[derive(Parser)]
+#[command(
+    about = "Pretty-print a conversation as JSONL message records",
+    long_about = "Emit every message in a session as structured JSONL. Each record \
+                  includes role, timestamp, text content, and tool calls. Use --thinking \
+                  to include thinking blocks, --from/--to to slice by message index."
+)]
 struct ShowArgs {
     /// Session ID (or prefix)
     session: String,
@@ -188,6 +207,11 @@ struct ShowArgs {
 // ── tools ──────────────────────────────────────────────────────────────────
 
 #[derive(Parser)]
+#[command(
+    about = "List every tool call in a session with timestamps",
+    long_about = "Emit one record per tool invocation in a session — tool name, \
+                  timestamp, role, and a preview of the input arguments."
+)]
 struct ToolsArgs {
     /// Session ID (or prefix)
     session: String,
@@ -196,6 +220,12 @@ struct ToolsArgs {
 // ── export ─────────────────────────────────────────────────────────────────
 
 #[derive(Parser)]
+#[command(
+    about = "Export a session as markdown (file or stdout)",
+    long_about = "Convert a full conversation session to readable markdown with \
+                  role headers, timestamps, tool call blocks, and thinking details. \
+                  Writes to a file by default or streams to stdout with --output."
+)]
 struct ExportArgs {
     /// Session ID (or prefix)
     session: String,
@@ -212,6 +242,12 @@ struct ExportArgs {
 // ── context ────────────────────────────────────────────────────────────────
 
 #[derive(Parser)]
+#[command(
+    about = "Show messages around a specific JSONL line number",
+    long_about = "Given a line number from a search result, show the surrounding \
+                  messages for context. Each record is tagged with is_target to \
+                  identify the focal message."
+)]
 struct ContextArgs {
     /// Session ID (or prefix)
     session: String,
@@ -227,6 +263,13 @@ struct ContextArgs {
 // ── freq ───────────────────────────────────────────────────────────────────
 
 #[derive(Parser)]
+#[command(
+    about = "Frequency analysis: chars, words, tools, or roles",
+    long_about = "Count character distributions, word frequencies, tool usage, \
+                  or message role breakdowns across all conversation logs. \
+                  Modes: chars (c), words (w), tools (t), roles (r). \
+                  Use --raw with chars mode to count raw JSONL bytes."
+)]
 struct FreqArgs {
     /// What to count: chars, words, tools, roles
     #[arg(default_value = "chars")]
@@ -244,6 +287,11 @@ struct FreqArgs {
 // ── recent ─────────────────────────────────────────────────────────────────
 
 #[derive(Parser)]
+#[command(
+    about = "Most recent messages across all sessions",
+    long_about = "Show the latest messages across all sessions, sorted by timestamp. \
+                  Filter by role or project. Useful for picking up where you left off."
+)]
 struct RecentArgs {
     /// Number of recent messages to show
     #[arg(long, short = 'n', default_value = "10")]

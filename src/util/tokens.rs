@@ -1,17 +1,17 @@
-/// Token budget utilities.
-///
-/// All token counting uses the same approximation: 1 token ~ 4 UTF-8 bytes.
+//! Token budget utilities.
+//!
+//! All token counting uses the same approximation: 1 token ~ 4 UTF-8 bytes.
 
 /// Approximate token count for a string.
 #[inline]
 pub fn approx(byte_len: usize) -> usize {
-    byte_len.div_ceil(4)
+    (byte_len + 3) / 4
 }
 
 /// Approximate token count for a serialised record (adds one for trailing newline).
 #[inline]
 pub fn approx_line(byte_len: usize) -> usize {
-    (byte_len + 1).div_ceil(4)
+    (byte_len + 4) / 4
 }
 
 #[cfg(test)]
